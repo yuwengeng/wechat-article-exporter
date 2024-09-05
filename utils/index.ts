@@ -3,6 +3,7 @@ import JSZip from "jszip";
 import type {
     AccountInfo,
     AppMsgEx,
+    AppMsgExWithHTML,
     AppMsgPublishResponse,
     PublishInfo,
     PublishPage,
@@ -12,11 +13,47 @@ import {updateArticleCache} from "~/store/article";
 import {ARTICLE_LIST_PAGE_SIZE, ACCOUNT_LIST_PAGE_SIZE} from "~/config";
 import {getAssetCache, updateAssetCache} from "~/store/assetes";
 import {updateAPICache} from "~/store/api";
-import {downloadBgImages, downloadImages} from "~/utils/download";
+import * as pool from '~/utils/pool'
+import mime from "mime";
+import {sleep} from "@antfu/utils";
+import type {DownloadResult} from "~/utils/pool";
 
 
 export function formatTimeStamp(timestamp: number) {
     return dayjs.unix(timestamp).format('YYYY-MM-DD HH:mm')
+}
+
+/**
+ * 使用代理下载资源
+ * @param url 资源地址
+ * @param proxy 代理地址
+ * @param timeout 超时时间(单位: 秒)，默认 30
+ */
+async function downloadAssetWithProxy<T extends Blob | string>(url: string, proxy: string, timeout = 30) {
+    const result = await $fetch<T>(`${proxy}?url=${encodeURIComponent(url)}`, {
+        retry: 0,
+        timeout: timeout * 1000,
+    })
+
+    // 统计代理下载资源流量
+    if (result instanceof Blob) {
+        pool.pool.incrementTraffic(proxy, result.size)
+    } else {
+        pool.pool.incrementTraffic(proxy, new Blob([result]).size)
+    }
+
+    return result
+}
+
+async function measureExecutionTime(label: string, taskFn: () => Promise<DownloadResult | DownloadResult[]>) {
+    const start = Date.now()
+    const result = await taskFn()
+    const end = Date.now()
+    const total = (end - start) / 1000;
+
+    pool.formatDownloadResult(label, result, total)
+
+    return result
 }
 
 /**
@@ -25,21 +62,66 @@ export function formatTimeStamp(timestamp: number) {
  * @param title
  */
 export async function downloadArticleHTML(articleURL: string, title?: string) {
-    const fullHTML = await $fetch<string>('/api/download?url=' + encodeURIComponent(articleURL), {
-        retryDelay: 2000,
+    let html = ''
+    const parser = new DOMParser()
+
+    const htmlDownloadFn = async (url: string, proxy: string) => {
+        const fullHTML = await downloadAssetWithProxy<string>(url, proxy)
+
+        // 验证是否下载完整
+        const document = parser.parseFromString(fullHTML, 'text/html')
+        const $jsContent = document.querySelector('#js_content')
+        if (!$jsContent) {
+            if (title) {
+                console.info(title)
+            }
+            throw new Error('下载失败，请重试')
+        }
+        html = fullHTML
+
+        return new Blob([html]).size
+    }
+
+    await measureExecutionTime('html下载结果:', async () => {
+        return await pool.downloads([articleURL], htmlDownloadFn)
     })
 
-    // 验证是否正常
-    const parser = new DOMParser()
-    const document = parser.parseFromString(fullHTML, 'text/html')
-    const $pageContent = document.querySelector('#page-content')
-    if (!$pageContent) {
-        if (title) {
-            console.info(title)
-        }
-        throw new Error('下载失败，请重试')
+    if (!html) {
+        throw new Error('下载html失败，请稍后重试')
     }
-    return fullHTML
+
+    return html
+}
+
+/**
+ * 批量下载文章 html
+ * @param articles
+ */
+export async function downloadArticleHTMLs(articles: AppMsgExWithHTML[]) {
+    const parser = new DOMParser()
+
+    const htmlDownloadFn = async (article: AppMsgExWithHTML, proxy: string) => {
+        const fullHTML = await downloadAssetWithProxy<string>(article.link, proxy)
+
+        // 验证是否下载完整
+        const document = parser.parseFromString(fullHTML, 'text/html')
+        const $jsContent = document.querySelector('#js_content')
+        if (!$jsContent) {
+            if (article.title) {
+                console.info(article.title)
+            }
+            throw new Error('下载失败，请重试')
+        }
+
+        article.html = fullHTML
+        await sleep(2000)
+
+        return new Blob([fullHTML]).size
+    }
+
+    await measureExecutionTime('html下载结果:', async () => {
+        return  await pool.downloads(articles, htmlDownloadFn)
+    })
 }
 
 /**
@@ -55,16 +137,16 @@ export async function packHTMLAssets(html: string, title: string, zip?: JSZip) {
 
     const parser = new DOMParser()
     const document = parser.parseFromString(html, 'text/html')
-    const $pageContent = document.querySelector('#page-content')!
+    const $jsArticleContent = document.querySelector('#js_article')!
 
     // #js_content 默认是不可见的(通过js修改为可见)，需要移除该样式
-    $pageContent.querySelector('#js_content')?.removeAttribute('style')
+    $jsArticleContent.querySelector('#js_content')?.removeAttribute('style')
 
     // 删除无用dom元素
-    $pageContent.querySelector('#js_tags_preview_toast')?.remove()
-    $pageContent.querySelector('#content_bottom_area')?.remove()
-    $pageContent.querySelector('#js_temp_bottom_area')?.remove()
-    $pageContent.querySelectorAll('script').forEach(el => {
+    $jsArticleContent.querySelector('#js_tags_preview_toast')?.remove()
+    $jsArticleContent.querySelector('#content_bottom_area')?.remove()
+    $jsArticleContent.querySelector('#js_temp_bottom_area')?.remove()
+    $jsArticleContent.querySelectorAll('script').forEach(el => {
         el.remove()
     })
 
@@ -72,68 +154,96 @@ export async function packHTMLAssets(html: string, title: string, zip?: JSZip) {
     zip.folder('assets')
 
     // 下载所有的图片
-    const imgs = $pageContent.querySelectorAll<HTMLImageElement>('img')
-    if (imgs.length > 0) {
-        try {
-            await downloadImages([...imgs], zip)
-        } catch (e) {
-            console.error(e)
+    const imgDownloadFn = async (img: HTMLImageElement, proxy: string) => {
+        const url = img.src || img.dataset.src!
+        if (!url) {
+            return 0
         }
+
+        const imgData = await downloadAssetWithProxy<Blob>(url, proxy, 10)
+        const uuid = new Date().getTime() + Math.random().toString()
+        const ext = mime.getExtension(imgData.type)
+        zip.file(`assets/${uuid}.${ext}`, imgData)
+
+        // 改写html中的引用路径，指向本地图片文件
+        img.src = `./assets/${uuid}.${ext}`
+
+        return imgData.size
+    }
+    const imgs = $jsArticleContent.querySelectorAll<HTMLImageElement>('img')
+    if (imgs.length > 0) {
+        await measureExecutionTime('图片下载结果:', async () => {
+            return await pool.downloads<HTMLImageElement>([...imgs], imgDownloadFn)
+        })
     }
 
 
     // 下载背景图片 背景图片无法用选择器选中并修改，因此用正则进行匹配替换
-    let pageContentHTML = $pageContent.outerHTML
+    let pageContentHTML = $jsArticleContent.outerHTML
 
     // 收集所有的背景图片地址
     const bgImageURLs = new Set<string>()
-    pageContentHTML.replaceAll(/((?:background|background-image): url\((?:&quot;)?)((?:https?|\/\/)[^)]+?)((?:&quot;)?\))/gs, (match, p1, url, p3) => {
+    pageContentHTML.replaceAll(/((?:background|background-image): url\((?:&quot;)?)((?:https?|\/\/)[^)]+?)((?:&quot;)?\))/gs, (_, p1, url, p3) => {
         bgImageURLs.add(url)
         return `${p1}${url}${p3}`
     })
     if (bgImageURLs.size > 0) {
-        try {
-            const url2pathMap = await downloadBgImages([...bgImageURLs], zip)
-            pageContentHTML = pageContentHTML.replaceAll(/((?:background|background-image): url\((?:&quot;)?)((?:https?|\/\/)[^)]+?)((?:&quot;)?\))/gs, (match, p1, url, p3) => {
-                if (url2pathMap.has(url)) {
-                    const path = url2pathMap.get(url)!
-                    return `${p1}./${path}${p3}`
-                } else {
-                    console.warn('背景图片丢失: ', url)
-                    return `${p1}${url}${p3}`
-                }
-            })
-        } catch (e) {
-            console.error(e)
+        // 下载背景图片
+        const bgImgDownloadFn = async (url: string, proxy: string) => {
+            const imgData = await downloadAssetWithProxy<Blob>(url, proxy, 10)
+            const uuid = new Date().getTime() + Math.random().toString()
+            const ext = mime.getExtension(imgData.type)
+
+            zip.file(`assets/${uuid}.${ext}`, imgData)
+            url2pathMap.set(url, `assets/${uuid}.${ext}`)
+            return imgData.size
         }
+        const url2pathMap = new Map<string, string>()
+
+        await measureExecutionTime('背景图片下载结果:', async () => {
+            return await pool.downloads<string>([...bgImageURLs], bgImgDownloadFn)
+        })
+
+        // 替换背景图片路径
+        pageContentHTML = pageContentHTML.replaceAll(/((?:background|background-image): url\((?:&quot;)?)((?:https?|\/\/)[^)]+?)((?:&quot;)?\))/gs, (_, p1, url, p3) => {
+            if (url2pathMap.has(url)) {
+                const path = url2pathMap.get(url)!
+                return `${p1}./${path}${p3}`
+            } else {
+                console.warn('背景图片丢失: ', url)
+                return `${p1}${url}${p3}`
+            }
+        })
     }
 
+
     // 下载样式表
+    const linkDownloadFn = async (link: HTMLLinkElement) => {
+        const url = link.href
+        let stylesheetFile: Blob | null
+
+        // 检查缓存
+        const cachedAsset = await getAssetCache(url)
+        if (cachedAsset) {
+            stylesheetFile = cachedAsset.file
+        } else {
+            const stylesheet = await $fetch<string>(url, {retryDelay: 2000})
+            stylesheetFile = new Blob([stylesheet], { type: 'text/css' })
+            await updateAssetCache({url: url, file: stylesheetFile})
+        }
+
+        const uuid = new Date().getTime() + Math.random().toString()
+        zip.file(`assets/${uuid}.css`, stylesheetFile)
+        localLinks += `<link rel="stylesheet" href="./assets/${uuid}.css">`
+
+        return stylesheetFile.size
+    }
     let localLinks: string = ''
     const links = document.querySelectorAll<HTMLLinkElement>('head link[rel="stylesheet"]')
-    for (const link of links) {
-        const url = link.href
-        try {
-            let stylesheetFile: Blob | null = null
-
-            // 检查缓存
-            const cachedAsset = await getAssetCache(url)
-            if (cachedAsset) {
-                stylesheetFile = cachedAsset.file
-            } else {
-                // 从网络上下载，并存入缓存
-                const stylesheet = await $fetch<string>(url, {retryDelay: 2000})
-                stylesheetFile = new Blob([stylesheet], { type: 'text/css' })
-                await updateAssetCache({url: url, file: stylesheetFile})
-            }
-
-            const uuid = new Date().getTime() + Math.random().toString()
-            zip.file(`assets/${uuid}.css`, stylesheetFile)
-            localLinks += `<link rel="stylesheet" href="./assets/${uuid}.css">`
-        } catch (e) {
-            console.info('样式表下载失败: ', url)
-            console.error(e)
-        }
+    if (links.length > 0) {
+        await measureExecutionTime('样式下载结果:', async () => {
+            return await pool.downloads<HTMLLinkElement>([...links], linkDownloadFn, false)
+        })
     }
 
     const indexHTML = `<!DOCTYPE html>
