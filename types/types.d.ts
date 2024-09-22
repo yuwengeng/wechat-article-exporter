@@ -31,6 +31,7 @@ export interface BizLoginResult {
 }
 
 export interface AccountInfo {
+    type: 'account'
     alias: string
     fakeid: string
     nickname: string
@@ -38,6 +39,12 @@ export interface AccountInfo {
     service_type: number
     signature: string
     _loaded?: boolean
+}
+
+export interface AuthorInfo {
+    type: 'author'
+    nickname: string
+    fakeid: string
 }
 
 export interface SearchBizResponse {
@@ -116,9 +123,17 @@ export interface RGB {
     b: number
 }
 
+export interface AppMsgAlbumInfo {
+    album_id: number
+    id: string
+    tagSource: number
+    title: string
+}
+
 export interface AppMsgEx {
     aid: string
     album_id: string
+    appmsg_album_infos: AppMsgAlbumInfo[]
     appmsgid: number
     author_name: string
     ban_flag: number
@@ -146,7 +161,10 @@ export interface AppMsgEx {
     update_time: number
 }
 
-export type AppMsgExWithHTML = AppMsgEx & {
+export interface DownloadableArticle {
+    title: string
+    url: string
+    date: number
     html?: string
     packed?: boolean
-};
+}

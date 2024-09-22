@@ -1,33 +1,5 @@
 <template>
-  <header class="sticky top-0 z-20 flex-none px-5 py-2 border-b flex items-center justify-between antialiased">
-    <div class="flex-auto flex flex-col sm:flex-row sm:items-center min-w-0">
-      <div class="text-md mr-2">当前选择公众号:</div>
-      <div class="flex items-center">
-        <span class="text-sky-400 font-semibold">{{ activeAccount?.nickname }}</span>
-        <button @click="openSwitcher" title="切换"
-                class="flex rounded text-sm leading-6 py-1 px-3 hover:bg-zinc-100 text-slate-500">
-          <span class="sr-only">切换</span>
-          <ArrowRightLeft :size="20" />
-        </button>
-      </div>
-<!--      <input type="file" @change="fileChange">-->
-    </div>
-    <div class="hidden space-x-5 lg:flex lg:items-center">
-      <span class="text-slate-500 text-sm font-medium">隐藏已删除文章: </span>
-      <UToggle v-model="hideDeleted" @change="toggleHideDeleted" />
-      <BaseSearch v-model="articleQuery" @search="searchArticle" placeholder="搜索文章标题"/>
-      <a href="https://github.com/jooooock/wechat-article-exporter" class="ml-6 block text-slate-500 hover:text-slate-600" title="goto github">
-        <span class="sr-only">Wechat Article Exporter on GitHub</span>
-        <svg viewBox="0 0 16 16" class="size-8" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>
-      </a>
-    </div>
-    <div v-if="loginAccount" class="flex flex-col sm:flex-row items-center sm:space-x-2 ml-5">
-      <img v-if="loginAccount.head_img" :src="loginAccount.head_img" alt="" class="rounded-full size-10">
-      <span v-if="loginAccount.nick_name">{{loginAccount.nick_name}}</span>
-    </div>
-  </header>
-
-  <USlideover v-model="isOpen" side="left" :ui="{overlay: {background: 'bg-zinc-400/75'}}">
+  <USlideover v-model="isOpen" side="left" appear :ui="{overlay: {background: 'bg-zinc-400/75'}}">
     <div
         class="rounded-lg divide-y divide-gray-100 dark:divide-gray-800 shadow bg-white dark:bg-gray-900 flex flex-col flex-1 overflow-y-scroll">
       <div class="sticky top-0 bg-white py-4 px-2 shadow">
@@ -71,19 +43,21 @@
 </template>
 
 <script setup lang="ts">
-import type {AccountInfo, AuthorInfo} from "~/types/types";
-import {Loader, ArrowRightLeft} from "lucide-vue-next";
-import {packHTMLAssets} from "~/utils";
 import {ACCOUNT_LIST_PAGE_SIZE, ACCOUNT_TYPE} from "~/config";
-import {authorInfo, getAccountList} from "~/apis";
-
+import {Loader} from "lucide-vue-next";
+import type {AccountInfo, AuthorInfo} from "~/types/types";
+import {getAccountList} from "~/apis";
+import {authorInfo} from "~/apis";
 
 const loginAccount = useLoginAccount()
 const activeAccount = useActiveAccount()
 
-const emit = defineEmits(['select:account', 'search:article', 'toggle:deleted'])
+const emit = defineEmits(['select:account'])
 
-const hideDeleted = ref(false)
+defineExpose({
+  openSwitcher: openSwitcher,
+})
+
 const isOpen = ref(false)
 
 function openSwitcher() {
@@ -98,6 +72,7 @@ function openSwitcher() {
 const accountQuery = ref('')
 const accountList = reactive<(AccountInfo | AuthorInfo)[]>([])
 let begin = 0
+
 
 /**
  * 搜索公众号
@@ -174,40 +149,4 @@ function selectAccount(account: AccountInfo | AuthorInfo) {
   })
 }
 
-
-const articleQuery = ref('')
-
-/**
- * 搜索文章
- */
-function searchArticle() {
-  if (!activeAccount.value) {
-    alert('请先选择公众号')
-    return
-  }
-
-  emit('search:article', articleQuery.value)
-}
-
-function toggleHideDeleted(value: boolean) {
-  emit('toggle:deleted', value)
-}
-
-// 为了调试
-function fileChange(evt: Event) {
-  const files = (evt.target as HTMLInputElement).files!
-  if (files.length > 0) {
-    const file = files[0]
-
-    const reader = new FileReader()
-    reader.addEventListener('load', async (event: Event) => {
-      const html = reader.result as string
-
-      debugger
-
-      await packHTMLAssets(html, 'title')
-    })
-    reader.readAsText(file)
-  }
-}
 </script>

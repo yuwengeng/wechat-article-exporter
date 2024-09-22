@@ -12,6 +12,8 @@
           :is-deleted="article.is_deleted"
           :link="article.link"
           :updatedAt="article.update_time"
+          :is-original="article.copyright_stat === 1 && article.copyright_type === 1"
+          :album-infos="article.appmsg_album_infos"
       />
     </ul>
     <div v-element-visibility="onElementVisibility"></div>
@@ -28,7 +30,7 @@
 import type {AppMsgEx} from "~/types/types";
 import {Loader} from "lucide-vue-next";
 import {vElementVisibility} from "@vueuse/components"
-import {getArticleList} from '~/utils'
+import {getArticleList} from '~/apis'
 import {getArticleCache, hitCache} from "~/store/article";
 import {getInfoCache} from "~/store/info";
 import {ARTICLE_LIST_PAGE_SIZE} from "~/config";
