@@ -1,8 +1,9 @@
 <p align="center">
-  <img src="./public/favicon.ico" alt="Logo" width="100">
+  <img src="./assets/logo.svg" alt="Logo" style="max-width: 800px">
 </p>
 
-<h3 align="center">微信公众号文章导出工具，100%还原文章样式。</h3>
+<h3 align="center">在线批量导出微信公众号文章，支持内嵌的音视频导出，无需搭建任何环境，可100%还原文章样式</h3>
+
 
 [![Deploy][deploy-badge]][deploy]
 ![GitHub stars]
@@ -22,6 +23,7 @@
 - [x] 缓存文章列表数据，减少接口请求次数 (关键字搜索的文章不会进入缓存)
 - [x] 过滤已删除文章
 - [x] 支持合集下载
+- [x] 支持内嵌的音视频
 - [ ] 支持图片分享消息
 - [ ] 支持导出评论(需要获取目标公众号的key)
 - [ ] 支持导出 md/docx/pdf/image 格式(需要技术调研，最终样式不能保证100%还原)
