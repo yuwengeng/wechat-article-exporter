@@ -3,11 +3,12 @@
   "version": "0.0.3",
   "type": "module",
   "scripts": {
-    "build": "nuxt build",
     "dev": "nuxt dev",
+    "build": "nuxt build",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
-    "postinstall": "nuxt prepare"
+    "postinstall": "nuxt prepare",
+    "add:biz": "deno run -A --unstable-kv scripts/biz.ts"
   },
   "dependencies": {
     "@deno/kv": "^0.8.2",
@@ -22,6 +23,7 @@
     "chartjs-adapter-dayjs-4": "^1.0.4",
     "date-fns": "^4.1.0",
     "dayjs": "^1.11.12",
+    "exceljs": "^4.4.0",
     "file-saver": "^2.0.5",
     "jszip": "^3.10.1",
     "lucide-vue-next": "^0.441.0",
@@ -30,7 +32,8 @@
     "nuxt-gtag": "^2.1.0",
     "v-calendar": "^3.1.2",
     "vue": "latest",
-    "vue-chartjs": "^5.3.1"
+    "vue-chartjs": "^5.3.1",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/file-saver": "^2.0.7",
@@ -38,6 +41,6 @@
     "typescript": "^5.5.3"
   },
   "engines": {
-    "node": "20"
+    "node": ">=20"
   }
 }
