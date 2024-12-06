@@ -2,7 +2,6 @@ import JSZip from "jszip";
 import {saveAs} from "file-saver";
 import {format} from 'date-fns';
 import {downloadArticleHTMLs, packHTMLAssets} from "~/utils";
-import {uploadProxy} from "~/store/proxy";
 import type {DownloadableArticle} from "~/types/types";
 
 
@@ -19,30 +18,27 @@ export function useBatchDownload() {
 
     async function download(articles: DownloadableArticle[], filename: string) {
         loading.value = true
+        try {
+            phase.value = '下载文章内容'
+            const results = await downloadArticleHTMLs(articles, (count: number) => {
+                downloadedCount.value = count
+            })
 
-        phase.value = '下载文章内容'
-        const results = await downloadArticleHTMLs(articles, (count: number) => {
-            downloadedCount.value = count
-        })
-
-        phase.value = '打包'
-        const zip = new JSZip()
-        for (const article of results) {
-            try {
+            phase.value = '打包'
+            const zip = new JSZip()
+            for (const article of results) {
                 await packHTMLAssets(article.html!, article.title.replaceAll('.', '_'), zip.folder(format(new Date(article.date * 1000), 'yyyy-MM-dd') + ' ' + article.title.replace(/\//g, '_'))!)
                 packedCount.value++
-            } catch (e: any) {
-                console.info('打包失败:')
-                console.warn(e.message)
             }
+
+            const blob = await zip.generateAsync({type: 'blob'})
+            saveAs(blob, `${filename}.zip`)
+        } catch (e: any) {
+            alert(e.message)
+            console.error(e)
+        } finally {
+            loading.value = false
         }
-
-        const blob = await zip.generateAsync({type: 'blob'})
-        saveAs(blob, `${filename}.zip`)
-
-        await uploadProxy()
-
-        loading.value = false
     }
 
     return {
@@ -66,29 +62,27 @@ export function useDownloadAlbum() {
     async function download(articles: DownloadableArticle[], filename: string) {
         loading.value = true
 
-        phase.value = '下载文章内容'
-        const results = await downloadArticleHTMLs(articles, (count: number) => {
-            downloadedCount.value = count
-        })
+        try {
+            phase.value = '下载文章内容'
+            const results = await downloadArticleHTMLs(articles, (count: number) => {
+                downloadedCount.value = count
+            })
 
-        phase.value = '打包'
-        const zip = new JSZip()
-        for (const article of results) {
-            try {
+            phase.value = '打包'
+            const zip = new JSZip()
+            for (const article of results) {
                 await packHTMLAssets(article.html!, article.title.replaceAll('.', '_'), zip.folder(format(new Date(+article.date * 1000), 'yyyy-MM-dd') + ' ' + article.title.replace(/\//g, '_'))!)
                 packedCount.value++
-            } catch (e: any) {
-                console.info('打包失败:')
-                console.warn(e.message)
             }
+
+            const blob = await zip.generateAsync({type: 'blob'})
+            saveAs(blob, `${filename}.zip`)
+        } catch (e: any) {
+            alert(e.message)
+            console.error(e)
+        } finally {
+            loading.value = false
         }
-
-        const blob = await zip.generateAsync({type: 'blob'})
-        saveAs(blob, `${filename}.zip`)
-
-        await uploadProxy()
-
-        loading.value = false
     }
 
     return {

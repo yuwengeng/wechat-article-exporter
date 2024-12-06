@@ -4,7 +4,7 @@
       <aside
           class="hidden md:flex flex-col h-screen w-[250px] flex-shrink-0 justify-between border-r border-slate-4 bg-slate-1 px-4 pb-6">
         <div class="flex items-center h-[60px]">
-          <NuxtLink to="/dashboard" class="px-2 font-bold text-xl">微信公众号文章导出</NuxtLink>
+          <NuxtLink to="/" class="px-2 font-bold text-xl">微信公众号文章导出</NuxtLink>
         </div>
 
         <!-- 导航菜单 -->
@@ -31,7 +31,7 @@
         <!-- footer -->
         <footer v-if="loginAccount" class="flex flex-col space-y-2 pt-3 border-t">
           <div class="flex items-center space-x-2">
-            <img v-if="loginAccount.avatar" :src="loginAccount.avatar" alt="" class="rounded-full size-10">
+            <img v-if="loginAccount.avatar" :src="IMAGE_REFERER_PROXY + '?url=' + loginAccount.avatar" alt="" class="rounded-full size-10">
             <UTooltip v-if="loginAccount.nickname" class="flex-1 overflow-hidden"
                       :popper="{ placement: 'top-start', offsetDistance: 16 }">
               <template #text>
@@ -83,9 +83,10 @@
 </template>
 
 <script setup lang="ts">
-import {Album, ChartNoAxesCombined, Download, Globe, Settings} from 'lucide-vue-next';
+import {Album, ChartNoAxesCombined, Download, Globe, Settings, HeartHandshake} from 'lucide-vue-next';
 import {formatDistance} from "date-fns";
 import type {LogoutResponse} from "~/types/types";
+import {IMAGE_REFERER_PROXY} from '~/config'
 
 
 const route = useRoute()
@@ -102,6 +103,7 @@ const items = ref([
   {name: '缓存分析', icon: ChartNoAxesCombined, href: '/dashboard/analytics'},
   {name: '资源额度', icon: Globe, href: '/dashboard/usage'},
   {name: '设置', icon: Settings, href: '/dashboard/settings'},
+  {name: '技术支持', icon: HeartHandshake, href: '/dashboard/support'},
 ])
 
 const expire = loginAccount.value.expires

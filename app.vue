@@ -10,22 +10,22 @@
 
 <script setup lang="ts">
 const isDev = !import.meta.env.PROD
+const runtimeConfig = useRuntimeConfig()
+
+const websiteID = runtimeConfig.public.umamiWebsiteID
 
 if (!useLoginAccount().value) {
   navigateTo('/login', {replace: true})
 }
 
 useHead({
-  meta: [
-    {
-      name: 'referrer',
-      content: 'no-referrer'
-    }
-  ],
   script: [
+    websiteID ?
     {
-      src: '/unregister.js',
-    }
+      src: 'https://cloud.umami.is/script.js',
+      defer: true,
+      'data-website-id': websiteID
+    } : '',
   ]
 })
 </script>
